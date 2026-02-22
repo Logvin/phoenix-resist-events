@@ -1,0 +1,65 @@
+name: Sync with upstream
+
+on:
+  workflow_dispatch:
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout fork
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Add upstream and fetch
+        run: |
+          git remote add upstream https://github.com/cityresist-events/resist-events.git
+          git fetch upstream
+
+      - name: Merge upstream/main (accept upstream for conflicts)
+        run: git merge upstream/main --no-edit -X theirs
+
+      - name: Restore phoenix wrangler.toml
+        run: |
+          printf '%s\n' \
+            'name = "phoenix-resist-events"' \
+            'compatibility_date = "2024-12-01"' \
+            'pages_build_output_dir = "public"' \
+            '' \
+            '[[d1_databases]]' \
+            'binding = "RESIST_DB"' \
+            'database_name = "phoenix-resist-events-db"' \
+            'database_id = "cbf4e0a8-2f26-4d29-8f18-b6a8d5c596fb"' \
+            '' \
+            '[[r2_buckets]]' \
+            'binding = "FLYER_BUCKET"' \
+            'bucket_name = "phoenix-resist-events-flyers"' \
+            '' \
+            '# Cloudflare Access JWT authentication (live mode)' \
+            '# Uncomment and set these to enable Cloudflare Access authentication.' \
+            '# When both are set, the app uses JWT auth instead of demo cookie auth.' \
+            '# CF_ACCESS_AUD = Application Audience (AUD) tag from Cloudflare Zero Trust dashboard' \
+            '# CF_ACCESS_TEAM_DOMAIN = Your team domain prefix (e.g. "myteam" for myteam.cloudflareaccess.com)' \
+            '# [vars]' \
+            '# CF_ACCESS_AUD = "your-application-aud-tag"' \
+            '# CF_ACCESS_TEAM_DOMAIN = "your-team-name"' \
+            > wrangler.toml
+
+      - name: Commit restored wrangler.toml if changed
+        run: |
+          git add wrangler.toml
+          if ! git diff --cached --quiet; then
+            git commit -m "chore: restore phoenix wrangler.toml after upstream sync"
+          fi
+
+      - name: Push to fork
+        run: git push origin main
